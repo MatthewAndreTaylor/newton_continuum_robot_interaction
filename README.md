@@ -25,6 +25,11 @@ without a window, or `--device cpu` / `--device cuda:0` to select a device.
 
 ### Grasping
 
+Design inspiration: https://youtu.be/Yp2f9gQongk
+
+I wanted to use three sections with rectangular cross-sections in a design better described as a hyper-redundant articulated manipulator.
+The robot can still wrap around objects, and a piecewise constant curvature (PCC) approximation can still be used for motion planning.
+
 #### Single environment, randomized pickup height, ball size, and goal cup location
 
 https://github.com/user-attachments/assets/34f50667-8bb9-4c02-bb56-557f17d6c5fc
