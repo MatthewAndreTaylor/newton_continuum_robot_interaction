@@ -1,0 +1,31 @@
+[project]
+name = "continuum-robot-interaction"
+version = "0.1.0"
+description = "Continuum robot interactions with Newton physics and NVIDIA Warp"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "newton==1.6.1",
+    "numpy>=2.0,<3",
+    "pyglet>=2.1.6,<3",
+    "imgui-bundle>=1.92,<2",
+    "PyOpenGL>=3.1.9,<4",
+    "Pillow>=11.3,<13",
+    # Warp 1.18 requires driver R580+; 1.17 supports this project's R573 host.
+    "warp-lang==1.17.0",
+]
+
+[project.scripts]
+continuum-robot = "continuum_robot_interaction.cli:main"
+continuum-baseline = "continuum_robot_interaction.baseline.cli:main"
+continuum-grasping = "continuum_robot_interaction.grasping.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+
+[dependency-groups]
+dev = ["pytest>=8,<10"]

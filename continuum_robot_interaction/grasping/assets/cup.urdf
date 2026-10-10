@@ -1,0 +1,125 @@
+<?xml version="1.0"?>
+<!-- SI units. Origin is the floor centre; import with a fixed base. -->
+<!-- Inner radius 0.055 m; separate wall colliders preserve the open cavity. -->
+<robot name="cup">
+  <material name="cup_blue"><color rgba="0.22 0.52 0.76 1"/></material>
+  <link name="cup">
+    <visual name="cup_floor">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.063" length="0.008"/></geometry>
+      <material name="cup_blue"/>
+    </visual>
+    <collision name="cup_floor">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.063" length="0.008"/></geometry>
+    </collision>
+    <visual name="cup_wall_0">
+      <origin xyz="0.059 0 0.034" rpy="0 0 0"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+      <material name="cup_blue"/>
+    </visual>
+    <collision name="cup_wall_0">
+      <origin xyz="0.059 0 0.034" rpy="0 0 0"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+    </collision>
+    <visual name="cup_wall_1">
+      <origin xyz="0.0510954988232819 0.0295 0.034" rpy="0 0 0.523598775598299"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+      <material name="cup_blue"/>
+    </visual>
+    <collision name="cup_wall_1">
+      <origin xyz="0.0510954988232819 0.0295 0.034" rpy="0 0 0.523598775598299"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+    </collision>
+    <visual name="cup_wall_2">
+      <origin xyz="0.0295 0.0510954988232819 0.034" rpy="0 0 1.0471975511966"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+      <material name="cup_blue"/>
+    </visual>
+    <collision name="cup_wall_2">
+      <origin xyz="0.0295 0.0510954988232819 0.034" rpy="0 0 1.0471975511966"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+    </collision>
+    <visual name="cup_wall_3">
+      <origin xyz="0 0.059 0.034" rpy="0 0 1.5707963267949"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+      <material name="cup_blue"/>
+    </visual>
+    <collision name="cup_wall_3">
+      <origin xyz="0 0.059 0.034" rpy="0 0 1.5707963267949"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+    </collision>
+    <visual name="cup_wall_4">
+      <origin xyz="-0.0295 0.0510954988232819 0.034" rpy="0 0 2.0943951023932"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+      <material name="cup_blue"/>
+    </visual>
+    <collision name="cup_wall_4">
+      <origin xyz="-0.0295 0.0510954988232819 0.034" rpy="0 0 2.0943951023932"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+    </collision>
+    <visual name="cup_wall_5">
+      <origin xyz="-0.0510954988232819 0.0295 0.034" rpy="0 0 2.61799387799149"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+      <material name="cup_blue"/>
+    </visual>
+    <collision name="cup_wall_5">
+      <origin xyz="-0.0510954988232819 0.0295 0.034" rpy="0 0 2.61799387799149"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+    </collision>
+    <visual name="cup_wall_6">
+      <origin xyz="-0.059 0 0.034" rpy="0 0 3.14159265358979"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+      <material name="cup_blue"/>
+    </visual>
+    <collision name="cup_wall_6">
+      <origin xyz="-0.059 0 0.034" rpy="0 0 3.14159265358979"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+    </collision>
+    <visual name="cup_wall_7">
+      <origin xyz="-0.0510954988232819 -0.0295 0.034" rpy="0 0 3.66519142918809"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+      <material name="cup_blue"/>
+    </visual>
+    <collision name="cup_wall_7">
+      <origin xyz="-0.0510954988232819 -0.0295 0.034" rpy="0 0 3.66519142918809"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+    </collision>
+    <visual name="cup_wall_8">
+      <origin xyz="-0.0295 -0.0510954988232819 0.034" rpy="0 0 4.18879020478639"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+      <material name="cup_blue"/>
+    </visual>
+    <collision name="cup_wall_8">
+      <origin xyz="-0.0295 -0.0510954988232819 0.034" rpy="0 0 4.18879020478639"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+    </collision>
+    <visual name="cup_wall_9">
+      <origin xyz="0 -0.059 0.034" rpy="0 0 4.71238898038469"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+      <material name="cup_blue"/>
+    </visual>
+    <collision name="cup_wall_9">
+      <origin xyz="0 -0.059 0.034" rpy="0 0 4.71238898038469"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+    </collision>
+    <visual name="cup_wall_10">
+      <origin xyz="0.0295 -0.0510954988232819 0.034" rpy="0 0 5.23598775598299"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+      <material name="cup_blue"/>
+    </visual>
+    <collision name="cup_wall_10">
+      <origin xyz="0.0295 -0.0510954988232819 0.034" rpy="0 0 5.23598775598299"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+    </collision>
+    <visual name="cup_wall_11">
+      <origin xyz="0.0510954988232819 -0.0295 0.034" rpy="0 0 5.75958653158129"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+      <material name="cup_blue"/>
+    </visual>
+    <collision name="cup_wall_11">
+      <origin xyz="0.0510954988232819 -0.0295 0.034" rpy="0 0 5.75958653158129"/>
+      <geometry><box size="0.008 0.0337615982463215 0.06"/></geometry>
+    </collision>
+  </link>
+</robot>
