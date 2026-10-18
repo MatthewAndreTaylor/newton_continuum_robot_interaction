@@ -23,6 +23,14 @@ without a window, or `--device cpu` / `--device cuda:0` to select a device.
 
 ## Examples
 
+### Baseline
+
+#### Forward kinematics and collision detection
+
+https://github.com/user-attachments/assets/0c08c4e5-0f49-45d4-bf63-cace4474b69f
+
+-------------------
+
 ### Grasping
 
 Design inspiration: https://youtu.be/Yp2f9gQongk
@@ -41,12 +49,6 @@ https://github.com/user-attachments/assets/32eb47f4-138d-4d31-b1e2-65a0b4eccf40
 #### 24x24 environments
 
 https://github.com/user-attachments/assets/078f1ae7-4f27-4836-b557-8a689865e6a6
-
-### Baseline
-
-#### Forward kinematics and collision detection
-
-https://github.com/user-attachments/assets/0c08c4e5-0f49-45d4-bf63-cace4474b69f
 
 ## Options
 
