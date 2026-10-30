@@ -53,6 +53,16 @@ https://github.com/user-attachments/assets/32eb47f4-138d-4d31-b1e2-65a0b4eccf40
 
 https://github.com/user-attachments/assets/078f1ae7-4f27-4836-b557-8a689865e6a6
 
+-------------------
+
+### Grasping
+
+Grasping builds on pseudo rigid grasping replacing the rigid links with three rod sections.
+It has the same ball pickup and placement task, and uses PCC target force control to bend the rods around each object.
+Deformation and contact friction help the gripper grasp around different ball sizes during pickup and transfer.
+
+https://github.com/user-attachments/assets/d67a8deb-ad17-49c9-a88b-29c9c1228414
+
 ## Options
 
 Repeat a scene with a fixed seed, or run multiple environments together:
