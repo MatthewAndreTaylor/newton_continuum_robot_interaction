@@ -15,14 +15,16 @@ def main(argv=None):
     if args and args[0] in ("-h", "--help"):
         parser = argparse.ArgumentParser(
             description=__doc__,
-            epilog="Use 'continuum-robot baseline --help' or 'continuum-robot grasping --help' for simulation options.",
+            epilog="Use 'continuum-robot SCENARIO --help' for simulation options.",
         )
-        parser.add_argument("scenario", nargs="?", choices=("baseline", "grasping"), default="baseline")
+        parser.add_argument("scenario", nargs="?", choices=("baseline", "pseudo_rigid_grasping", "grasping"), default="baseline")
         parser.print_help()
         return
-    scenario = args.pop(0) if args and args[0] in ("baseline", "grasping") else "baseline"
+    scenario = args.pop(0) if args and args[0] in ("baseline", "pseudo_rigid_grasping", "grasping") else "baseline"
     if scenario == "grasping":
         from .grasping.cli import main as run
+    elif scenario == "pseudo_rigid_grasping":
+        from .pseudo_rigid_grasping.cli import main as run
     else:
         from .baseline.cli import main as run
     return run(args)

@@ -1,4 +1,4 @@
-"""Contact-only grasping with an imported tapered arm URDF and Newton physics."""
+"""Three elastic rod sections grasping a ball through contact forces."""
 
 import colorsys
 import math
@@ -7,8 +7,9 @@ import newton
 import numpy as np
 import warp as wp
 
-from ..cli import DEFAULT_FRAME_DT, DEFAULT_SIM_PARAMS
-from .model import ACTUATED_JOINT_NAMES, CUP_URDF_PATH, JOINT_NAMES, SECTION_SLICES, URDF_PATH, YAW_JOINT_NAME
+from ..cli import BASELINE_CONTROL_PARAMS, DEFAULT_FRAME_DT, DEFAULT_SIM_PARAMS
+from .model import CUP_URDF_PATH, SEGMENT_LENGTHS, add_arm
+from .control import pcc_forces, update_targets
 from .planning import CUP_FLOOR_THICKNESS, CUP_FLOOR_Z, CUP_INNER_RADIUS, CUP_RADIUS_RANGE, CUP_SOURCE_CLEARANCE, CUP_WALL_HEIGHT, GraspPlan, OBJECT_CENTER
 
 # Dimensions used for result checks must match assets/cup.urdf.
@@ -17,6 +18,7 @@ CUP_GEOMETRY = {"inner_radius": CUP_INNER_RADIUS, "wall_thickness": 0.008, "wall
 CUP_RADIAL_RANGE = CUP_RADIUS_RANGE
 BALL_RADIUS_RANGE = (0.015, 0.035)
 RAIL_HEIGHT_RANGE = (0.120, 0.240)
+GRASP_CONTROL_PARAMS = {"gain": BASELINE_CONTROL_PARAMS["gain"], "damping": 450.0}
 
 
 def _geometry_range(values, name):
@@ -26,49 +28,22 @@ def _geometry_range(values, name):
     return bounds
 
 
-@wp.kernel
-def joint_targets(
-    curr_time: wp.array(dtype=wp.float64),
-    time_offset: wp.float64,
-    targets: wp.array2d(dtype=wp.float64),
-    yaw_offset: wp.float64,
-    indices: wp.array(dtype=int),
-    output: wp.array(dtype=float),
-):
-    """Launch 25 threads to interpolate and write targets at control indices."""
-    joint = wp.tid()
-    sample = wp.clamp((curr_time[0] + time_offset) * wp.float64(60.0), wp.float64(0.0), wp.float64(targets.shape[0] - 1))
-    lower = int(wp.floor(sample))
-    upper = wp.min(lower + 1, targets.shape[0] - 1)
-    alpha = sample - wp.float64(lower)
-    target = targets[lower, joint] + alpha * (targets[upper, joint] - targets[lower, joint])
-    if joint == 0:
-        target -= yaw_offset
-    output[indices[joint]] = float(target)
-
-@wp.kernel
-def _finish_frame(
-    body_q: wp.array[wp.transform],
-    object_body: int,
-    frame_dt: wp.float64,
-    curr_time: wp.array[wp.float64],
-    max_object_height: wp.array[float],
-):
-    curr_time[0] += frame_dt
-    height = wp.transform_get_translation(body_q[object_body])[2]
-    max_object_height[0] = wp.max(max_object_height[0], height)
-
-
 class _Scene:
     """Build one seeded scene before allocating physics state or a solver."""
 
     def __init__(self, params=None, device=None, seed=None, cup_position=None, *,
                  ball_radius_range=BALL_RADIUS_RANGE, rail_height_range=RAIL_HEIGHT_RANGE):
-        self.params = DEFAULT_SIM_PARAMS.copy()
+        self.params = {**DEFAULT_SIM_PARAMS, **GRASP_CONTROL_PARAMS}
         self.params.update(params or {})
-        assert self.params["substeps"] > 0 and isinstance(self.params["substeps"], int), "substeps must be a positive integer"
-        assert self.params["iterations"] > 0 and isinstance(self.params["iterations"], int), "iterations must be a positive integer"
-        assert self.params["substeps"] % 2 == 0, "substeps must be even for graph capture"
+        for name in ("substeps", "iterations"):
+            value = self.params[name]
+            if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        if self.params["substeps"] % 2:
+            raise ValueError("substeps must be even for graph capture")
+        for name in ("gain", "damping"):
+            if not math.isfinite(self.params[name]) or self.params[name] < 0.0:
+                raise ValueError(f"{name} must be finite and nonnegative")
         ball_radius_range = _geometry_range(ball_radius_range, "ball_radius_range")
         rail_height_range = _geometry_range(rail_height_range, "rail_height_range")
         if ball_radius_range[1] >= CUP_INNER_RADIUS:
@@ -101,40 +76,7 @@ class _Scene:
         builder.default_shape_cfg.kd = 100.0
         builder.default_shape_cfg.mu = 1.0
         builder.default_shape_cfg.gap = 0.002
-        builder.default_joint_cfg.target_ke = 100.0
-        builder.add_urdf(str(URDF_PATH), floating=False, enable_self_collisions=True, joint_ordering="dfs")
-        joint_labels = [label.rsplit("/", 1)[-1] for label in builder.joint_label]
-        joint_indices = [joint_labels.index(name) for name in JOINT_NAMES]
-        target_indices = [builder.joint_q_start[joint_labels.index(name)] for name in ACTUATED_JOINT_NAMES]
-        yaw_joint = joint_labels.index(YAW_JOINT_NAME)
-        # Center this joint's coordinates on the planned sweep, keeping the
-        # native angular drive clear of its +/-pi representation boundary.
-        self._yaw_offset = self.plan.target_yaw / 2
-        builder.joint_X_p[yaw_joint] = wp.transform_multiply(
-            builder.joint_X_p[yaw_joint],
-            wp.transform(wp.vec3(0.0), wp.quat_from_axis_angle(wp.vec3(0.0, 0.0, 1.0), self._yaw_offset)),
-        )
-        builder.joint_target_q[target_indices[0]] = -self._yaw_offset
-        yaw_dof = builder.joint_qd_start[yaw_joint]
-        builder.joint_target_ke[yaw_dof] = 3000.0
-        builder.joint_target_kd[yaw_dof] = 10.0
-        builder.joint_target_mode[yaw_dof] = newton.JointTargetMode.POSITION
-        for section, stiffness, damping in zip(SECTION_SLICES, (3000.0, 1500.0, 300.0), (10.0, 5.0, 1.0)):
-            for joint in joint_indices[section]:
-                dof = builder.joint_qd_start[joint]
-                builder.joint_target_ke[dof] = stiffness
-                builder.joint_target_kd[dof] = damping
-                builder.joint_target_mode[dof] = newton.JointTargetMode.POSITION
-        # The first bending hinge pivots within the pedestal's mounting volume.
-        first_link = builder.joint_child[joint_indices[0]]
-        for base_shape, body in enumerate(builder.shape_body):
-            if body == 0:
-                for link_shape, link_body in enumerate(builder.shape_body):
-                    if link_body == first_link:
-                        builder.add_shape_collision_filter_pair(base_shape, link_shape)
-        # The URDF pedestal is the fixed mounting, not a driven robot body.
-        builder.body_mass[0] = builder.body_inv_mass[0] = 0.0
-        builder.body_inertia[0] = builder.body_inv_inertia[0] = wp.mat33(0.0)
+        self.base_body, self.rod_bodies = add_arm(builder)
 
         surface = newton.ModelBuilder.ShapeConfig(density=0.0, ke=2e5, kd=100.0, mu=1.0, gap=0.002)
         builder.add_ground_plane(cfg=surface)
@@ -150,7 +92,7 @@ class _Scene:
                 cfg=surface, color=(0.45, 0.47, 0.51), label=f"cradle_{side:g}",
             )
 
-        # Collapse only the cup's fixed root, preserving the arm's joint indices.
+        # Import the shared cup as static collision geometry.
         cup_builder = newton.ModelBuilder(up_axis="Z")
         cup_builder.default_shape_cfg = surface
         cup_builder.add_urdf(
@@ -176,116 +118,139 @@ class _Scene:
         )
         builder.color()
         self.builder = builder
-        self.target_indices = target_indices
+
+
+@wp.kernel
+def _finish_frame(
+    body_q: wp.array[wp.transform],
+    object_bodies: wp.array[int],
+    frame_dt: wp.float64,
+    curr_time: wp.array[wp.float64],
+    max_object_height: wp.array[float],
+):
+    world = wp.tid()
+    if world == 0:
+        curr_time[0] += frame_dt
+    height = wp.transform_get_translation(body_q[object_bodies[world]])[2]
+    max_object_height[world] = wp.max(max_object_height[world], height)
 
 
 class Simulation(_Scene):
-    """Command joint targets; contact and gravity determine every object pose."""
+    """Drive rod centerlines with PCC forces; objects move by contact."""
 
     def __init__(self, params=None, device=None, seed=None, cup_position=None, *,
                  ball_radius_range=BALL_RADIUS_RANGE, rail_height_range=RAIL_HEIGHT_RANGE):
         super().__init__(params=params, device=device, seed=seed, cup_position=cup_position,
                          ball_radius_range=ball_radius_range, rail_height_range=rail_height_range)
         builder = self.builder
-        target_indices = self.target_indices
-        self.time = 0.0
-        self.curr_time = wp.zeros(1, dtype=wp.float64, device=self.device)
-        self.frame_dt = DEFAULT_FRAME_DT
-        self.model = builder.finalize(device=self.device)
         del self.builder
-        # VBD measures angular strains relative to model.body_q, so its rest
-        # pose must use that same centered frame. Initial physical poses still
-        # point straight up at world yaw zero.
-        newton.eval_fk(self.model, self.model.joint_q, self.model.joint_qd, self.model)
-        initial_coordinates = self.model.joint_q.numpy().copy()
-        initial_coordinates[target_indices[0]] = -self._yaw_offset
-        initial_coordinates = wp.array(initial_coordinates, dtype=float, device=self.device)
+        self._initialize(builder, [self], self.plan._targets.reshape((1, *self.plan._targets.shape)))
+
+    def _initialize(self, builder, scenes, samples):
+        self.scenes = scenes
+        self.count = len(scenes)
+        self.params = scenes[0].params
+        self.time = 0.0
+        self.frame_dt = DEFAULT_FRAME_DT
+        self.curr_time = wp.zeros(1, dtype=wp.float64, device=self.device)
+        self.model = builder.finalize(device=self.device)
         self.state = self.model.state()
         self._next_state = self.model.state()
         self.control = self.model.control()
-        newton.eval_fk(self.model, initial_coordinates, self.model.joint_qd, self.state)
-        newton.eval_fk(self.model, initial_coordinates, self.model.joint_qd, self._next_state)
         self.collision_pipeline = newton.CollisionPipeline(self.model)
         self.contacts = self.collision_pipeline.contacts()
         self.solver = newton.solvers.SolverVBD(
-            self.model, iterations=int(self.params["iterations"]), rigid_compliant_alm=True,
-            rigid_joint_linear_ke=1e6, rigid_joint_angular_ke=1e6,
+            self.model, iterations=self.params["iterations"], rigid_compliant_alm=True,
         )
-        self._joint_indices = wp.array(target_indices, dtype=wp.int32, device=self.device)
-        self._max_object_height = wp.array([self.object_initial_position[2]], dtype=float, device=self.device)
+        self._samples = samples
+        self._rod_bodies = wp.array([body for scene in scenes for body in scene.rod_bodies],
+                                    dtype=int, device=self.device)
+        self.targets = wp.empty(self._rod_bodies.size, dtype=wp.vec3, device=self.device)
+        self.target_velocities = wp.empty_like(self.targets)
+        self.object_bodies = np.asarray([scene.object_body for scene in scenes], dtype=np.int32)
+        self._object_bodies = wp.array(self.object_bodies, dtype=int, device=self.device)
+        self._initial_heights = wp.array([scene.object_initial_position[2] for scene in scenes], dtype=float, device=self.device)
+        self._max_object_height = wp.clone(self._initial_heights)
         self._initial_state = self.model.state()
         self._initial_state.assign(self.state)
-        with wp.ScopedCapture(device=self.model.device) as capture:
+        with wp.ScopedCapture(device=self.device) as capture:
             self._simulate()
         self.graph = capture.graph
+        self.reset()
 
     def reset(self):
-        """Restart in place so the captured graph keeps its array references."""
+        """Restore the rods, ball, controller clock and solver history in place."""
         self.time = 0.0
         self.curr_time.zero_()
-        self._max_object_height.fill_(self.object_initial_position[2])
+        wp.copy(self._max_object_height, self._initial_heights)
         self.state.assign(self._initial_state)
         self._next_state.assign(self._initial_state)
-        # Preserve the initial yaw correction while clearing solver history.
         self.solver.reset(self.state, flags=0)
         self.control.clear(self.model)
         self.collision_pipeline.reset_contact_matching()
         self.collision_pipeline.collide(self.state, self.contacts)
+        wp.launch(update_targets, dim=(self.count, len(SEGMENT_LENGTHS)),
+                  inputs=[self.curr_time, 0.0, self._samples],
+                  outputs=[self.targets, self.target_velocities], device=self.device)
 
     def step(self):
-        """Replay one captured physics frame."""
         wp.capture_launch(self.graph)
         self.time += self.frame_dt
 
     def _simulate(self):
-        dt = self.frame_dt
         substeps = self.params["substeps"]
+        dt = self.frame_dt / substeps
         with wp.ScopedDevice(self.device):
-            wp.launch(
-                joint_targets, dim=len(ACTUATED_JOINT_NAMES),
-                inputs=[self.curr_time, dt, self.plan._targets, self._yaw_offset, self._joint_indices],
-                outputs=[self.control.joint_target_q],
-            )
-            for _ in range(substeps):
+            for substep in range(substeps):
+                wp.launch(update_targets, dim=(self.count, len(SEGMENT_LENGTHS)),
+                          inputs=[self.curr_time, (substep + 1) * dt, self._samples],
+                          outputs=[self.targets, self.target_velocities])
                 self.state.clear_forces()
+                wp.launch(pcc_forces, dim=self._rod_bodies.size,
+                          inputs=[self.state.body_q, self.state.body_qd, self.model.body_inv_mass,
+                                  self._rod_bodies, self.targets, self.target_velocities,
+                                  self.params["gain"], self.params["damping"], dt],
+                          outputs=[self.state.body_f])
                 self.collision_pipeline.collide(self.state, self.contacts)
-                self.solver.step(self.state, self._next_state, self.control, self.contacts, dt / substeps)
+                self.solver.step(self.state, self._next_state, self.control, self.contacts, dt)
                 self.state, self._next_state = self._next_state, self.state
-            wp.launch(
-                _finish_frame, dim=1,
-                inputs=[self.state.body_q, self.object_body, dt],
-                outputs=[self.curr_time, self._max_object_height],
-            )
+            wp.launch(_finish_frame, dim=self.count,
+                      inputs=[self.state.body_q, self._object_bodies, self.frame_dt],
+                      outputs=[self.curr_time, self._max_object_height])
+
+    def _results(self):
+        poses = self.state.body_q.numpy()
+        velocities = self.state.body_qd.numpy()
+        heights = self._max_object_height.numpy()
+        wall_angles = 2 * math.pi * np.arange(CUP_GEOMETRY["wall_count"]) / CUP_GEOMETRY["wall_count"]
+        normals = np.column_stack((np.cos(wall_angles), np.sin(wall_angles)))
+        results = []
+        for world, scene in enumerate(self.scenes):
+            position = poses[scene.object_body, :3]
+            floor = scene.cup_position[2] + CUP_GEOMETRY["floor_thickness"] / 2
+            rim = floor + CUP_GEOMETRY["wall_height"]
+            wall_distance = np.max(normals @ (position[:2] - scene.cup_position[:2]))
+            in_cup = (wall_distance <= CUP_GEOMETRY["inner_radius"] - scene.object_radius + 0.001
+                      and floor + scene.object_radius - 0.001 <= position[2]
+                      <= max(rim - scene.object_radius, floor + scene.object_radius) + 0.001)
+            results.append({
+                "seed": scene.seed,
+                "ball_radius": scene.object_radius,
+                "rail_height": scene.rail_height,
+                "cup_position": scene.cup_position.tolist(),
+                "object_initial_position": scene.object_initial_position.tolist(),
+                "object_final_position": position.tolist(),
+                "lift_height": float(position[2] - scene.object_initial_position[2]),
+                "maximum_lift_height": max(0.0, float(heights[world] - scene.object_initial_position[2])),
+                "transport_distance": float(np.linalg.norm(position[:2] - scene.object_initial_position[:2])),
+                "target_position_error": float(np.linalg.norm(position[:2] - scene.cup_position[:2])),
+                "object_speed": float(np.linalg.norm(velocities[scene.object_body, :3])),
+                "ball_in_cup": bool(in_cup),
+            })
+        return results
 
     def results(self):
-        position = self.state.body_q.numpy()[self.object_body, :3].copy()
-        lift = float(position[2] - self.object_initial_position[2])
-        transport = float(np.linalg.norm(position[:2] - self.object_initial_position[:2]))
-        target_error = float(np.linalg.norm(position[:2] - self.cup_position[:2]))
-        speed = float(np.linalg.norm(self.state.body_qd.numpy()[self.object_body, :3]))
-        floor = self.cup_position[2] + CUP_GEOMETRY["floor_thickness"] / 2
-        rim = floor + CUP_GEOMETRY["wall_height"]
-        wall_angles = 2 * math.pi * np.arange(CUP_GEOMETRY["wall_count"]) / CUP_GEOMETRY["wall_count"]
-        wall_normals = np.column_stack((np.cos(wall_angles), np.sin(wall_angles)))
-        wall_distance = np.max(wall_normals @ (position[:2] - self.cup_position[:2]))
-        # A seated large ball may protrude above the rim.
-        settled_top = max(rim - self.object_radius, floor + self.object_radius)
-        in_cup = bool(wall_distance <= CUP_GEOMETRY["inner_radius"] - self.object_radius + 0.001
-                      and floor + self.object_radius - 0.001 <= position[2] <= settled_top + 0.001)
-        return {
-            "object_initial_position": self.object_initial_position.tolist(),
-            "object_final_position": position.tolist(),
-            "lift_height": lift,
-            "maximum_lift_height": max(0.0, float(self._max_object_height.numpy()[0] - self.object_initial_position[2])),
-            "transport_distance": transport,
-            "target_position_error": target_error,
-            "object_speed": speed,
-            "seed": self.seed,
-            "ball_radius": self.object_radius,
-            "rail_height": self.rail_height,
-            "cup_position": self.cup_position.tolist(),
-            "ball_in_cup": in_cup,
-        }
+        return self._results()[0]
 
 
 def run(params=None, device=None, seed=None, cup_position=None, *, headless=True,

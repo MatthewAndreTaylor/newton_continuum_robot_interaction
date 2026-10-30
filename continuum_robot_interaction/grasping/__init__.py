@@ -1,1 +1,1 @@
-"""Three-section rectangular arm, grasp planning, and Newton contact simulation."""
+"""Elastic rod grasping with PCC target-force control."""

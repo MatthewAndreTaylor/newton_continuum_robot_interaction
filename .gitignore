@@ -18,3 +18,4 @@ site_dist
 *.db
 *.ini
 outputs
+etc

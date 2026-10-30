@@ -24,13 +24,13 @@ def run_simulation(
         while True:
             simulation.step()
 
-    viewer = newton.viewer.ViewerGL(width=3000, height=1200)
+    viewer = newton.viewer.ViewerGL(width=2000, height=800)
     try:
         viewer.set_model(simulation.model)
         if world_spacing is not None:
             viewer.set_world_offsets(world_spacing)
         viewer.set_reset_callback(simulation.reset)
-        viewer.show_contacts = True
+        # viewer.show_contacts = True
         viewer.set_camera(wp.vec3(*camera_position), pitch=camera_pitch, yaw=camera_yaw)
         if draw_ui is not None:
             viewer.register_ui_callback(lambda imgui: draw_ui(imgui, viewer, simulation), position="free")

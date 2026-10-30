@@ -18,6 +18,7 @@ dependencies = [
 [project.scripts]
 continuum-robot = "continuum_robot_interaction.cli:main"
 continuum-baseline = "continuum_robot_interaction.baseline.cli:main"
+continuum-pseudo-rigid-grasping = "continuum_robot_interaction.pseudo_rigid_grasping.cli:main"
 continuum-grasping = "continuum_robot_interaction.grasping.cli:main"
 
 [build-system]
